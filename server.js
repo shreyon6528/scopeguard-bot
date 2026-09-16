@@ -1,4 +1,4 @@
-require('dotenv').config();
+      require('dotenv').config();
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const { v4: uuidv4 } = require('uuid');
@@ -86,33 +86,39 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
-    const messages = (Array.isArray(history) ? history : [])
-      .slice(-10)
-      .concat([{ role: 'user', content: message }]);
+    const history_ = (Array.isArray(history) ? history : []).slice(-10);
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const contents = history_
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      }))
+      .concat([{ role: 'user', parts: [{ text: message }] }]);
+
+    const model = 'gemini-2.0-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 500,
-        system: SYSTEM_PROMPT,
-        messages,
+        contents,
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        generationConfig: { maxOutputTokens: 500 },
       }),
     });
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Anthropic API error:', response.status, errText);
+      console.error('Gemini API error:', response.status, errText);
       return res.status(502).json({ error: 'The AI service failed. Try again shortly.' });
     }
 
     const data = await response.json();
-    const reply = data.content.map((b) => (b.type === 'text' ? b.text : '')).join('\n').trim();
+    const reply = (data.candidates?.[0]?.content?.parts || [])
+      .map((p) => p.text || '')
+      .join('\n')
+      .trim();
 
     if (!u.paid) u.count += 1;
 
@@ -136,18 +142,4 @@ app.post('/api/create-checkout-session', async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
-      line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
-      client_reference_id: req.sessionId,
-      success_url: `${DOMAIN}/?upgraded=1`,
-      cancel_url: `${DOMAIN}/?upgraded=0`,
-    });
-    res.json({ url: session.url });
-  } catch (err) {
-    console.error('Stripe checkout error:', err);
-    res.status(500).json({ error: 'Could not start checkout.' });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`Scope Guard running at ${DOMAIN}`);
-});
+      line_items: [{ price: process.env.STRIPE_PRICE_ID, qua
